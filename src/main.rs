@@ -7,16 +7,19 @@ extern crate termion;
 extern crate uuid;
 
 use clap::{App, Arg, SubCommand};
+use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+type UuidString = String;
+
 #[derive(Serialize, Deserialize, Debug)]
 enum LedgerEntry {
     NewCard(Card),
-    UpdateCard(Card),
-    DeleteCard(String),
+    UpdateTags(UuidString, Vec<String>),
+    DeleteCard(UuidString),
     Attempt(AttemptRecord),
 }
 
@@ -32,7 +35,7 @@ enum AttemptQuality {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct AttemptRecord {
-    uuid: String,
+    uuid: UuidString,
     // Timestamp of Attempt
     // Represents seconds of UTC time since Unix epoch
     attempt_seconds_utc: u64,
@@ -52,7 +55,7 @@ struct BasicCard {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Card {
-    uuid: String,
+    uuid: UuidString,
     // Timestamp at time of card creation
     // Represents seconds of UTC time since Unix epoch
     creation_seconds_utc: u64,
@@ -62,7 +65,38 @@ struct Card {
     card_contents: CardContents,
 }
 
-//Result<(), Box<std::error::Error + 'static>>
+fn append_to_ledger(update: LedgerEntry, ledger_path: String) -> Result<(), std::io::Error> {
+    let serialized = serde_json::to_string(&update).unwrap();
+    println!("Serialized: {}", serialized);
+
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(ledger_path)?;
+    file.write(serialized.as_bytes())?;
+    file.write(b"\n")?;
+    file.flush()?;
+    Ok(())
+}
+
+fn update_from_ledger(
+    ledger_entry: LedgerEntry,
+    cards: &mut HashMap<UuidString, Card>,
+) -> Result<(), String> {
+    match ledger_entry {
+        LedgerEntry::NewCard(new_card) => {
+            cards.insert(new_card.uuid.clone(), new_card);
+            Ok(())
+        },
+        LedgerEntry::DeleteCard(uuid) => {
+            // TODO throw a warning if uuid doesn't exist?
+            cards.remove(&uuid);
+            Ok(())
+        },
+        _ => Ok(()),
+    }
+}
+
 fn main() -> std::io::Result<()> {
     let matches = App::new("Brayne Local")
         .version("0.1")
@@ -115,7 +149,6 @@ fn main() -> std::io::Result<()> {
         } else {
             vec![]
         };
-
         let utc_seconds = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(utc) => utc,
             Err(err) => panic!("Failed to fetch system time: {}", err),
@@ -132,26 +165,22 @@ fn main() -> std::io::Result<()> {
         };
 
         println!("Card: {:?}", card);
-
-        let serialized = serde_json::to_string(&card).unwrap();
-        println!("Serialized: {}", serialized);
-
-        let mut file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open("ledger.dat")?;
-        file.write(serialized.as_bytes())?;
-        file.write(b"\n")?;
-        file.flush()?;
+        append_to_ledger(LedgerEntry::NewCard(card), "ledger.dat".to_string())?;
+    } else if let Some(matches) = matches.subcommand_matches("delete") { 
+        let uuid = matches.value_of("uuid").unwrap();
+        append_to_ledger(LedgerEntry::DeleteCard(uuid.to_string()), "ledger.dat".to_string())?;
     } else {
+        let mut cards = HashMap::new();
         let mut file = OpenOptions::new().read(true).open("ledger.dat")?;
         for (num, line) in BufReader::new(file).lines().enumerate() {
             let l = line?;
-            let card: Card = serde_json::from_str(&l)?;
-            println!("Card {}: {:?}", num, card);
+            let update: LedgerEntry = serde_json::from_str(&l)?;
+            println!("LedgerEntry {}: {:?}", num, update);
+            update_from_ledger(update, &mut cards);
         }
 
         loop {
+            println!("Cards: {:?}", cards);
             let mut command = "".to_string();
             std::io::stdin().read_line(&mut command)?;
             command = command.to_lowercase();

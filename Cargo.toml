@@ -1,0 +1,12 @@
+[package]
+name = "brayne-local-rs"
+version = "0.1.0"
+authors = ["Scott Moeller <electronjoe@gmail.com>"]
+
+[dependencies]
+clap = "2.32.0"
+serde = "1.0.80"
+serde_derive = "1.0.80"
+serde_json = "1.0.32"
+termion = "1.5.1"
+uuid = {version = "0.6.5", features = ["v4"] }

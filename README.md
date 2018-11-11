@@ -1,6 +1,14 @@
 # brayne
 Brayne is a self-hosted command line timed repetition tool for flashcard memorization - in Rust
 
+## Design
+
+### On use of a Ledger backstore
+
+A ledger system was chosen for Brayne because it made for a simple on-disk storage algorithm with incremental update, avoiding complexities of random read/write behavior that is common for mutable datastructures backed to disk.  The disadvantage is in vulnerability to corruption in a larger run-length file.
+
+For a card memorization application, ledger use is of reduced risk relative to other applications.  This is because the behavior of Brayne gracefully degrades with loss of ledger data.  Specifically, the card next attempt timing is minimally impacted by historical attempts prior to the last card failure - and has small variance with loss of attempts since last card failure.
+
 ## Supermemo Algorithm
 
 * See SM-2 documentation at [supermemo.com](https://www.supermemo.com/english/ol/sm2.htm)

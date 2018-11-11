@@ -1,9 +1,9 @@
 use card::{AttemptQuality, AttemptRecord};
 use std::ops::Add;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug)]
-struct CardState {
+pub struct CardState {
     // Count of consecutive AttemptRecords scoring >= CorrectSeriousDifficulty
     recall_count: i32,
     // Effort factor up through last AttemptRecord
@@ -15,7 +15,7 @@ struct CardState {
 }
 
 impl CardState {
-    fn new(created: std::time::SystemTime) -> CardState {
+    pub fn new(created: std::time::SystemTime) -> CardState {
         CardState {
             recall_count: 0,
             effort_factor: 2.5,
@@ -24,7 +24,7 @@ impl CardState {
         }
     }
 
-    fn update(&mut self, attempt_record: &AttemptRecord) {
+    pub fn update(&mut self, attempt_record: &AttemptRecord) {
         const DAY_IN_SECONDS: u64 = 24 * 60 * 60;
         self.recall_count = match attempt_record.quality {
             AttemptQuality::Perfect
@@ -32,16 +32,24 @@ impl CardState {
             | AttemptQuality::CorrectSeriousDifficulty => self.recall_count + 1,
             _ => 0,
         };
-        self.effort_factor = update_effort_factor(self.effort_factor, attempt_record.quality);
-        self.next_attempt = if self.recall_count == 1 {
-            attempt_record.time.add(Duration::new(DAY_IN_SECONDS, 0))
-        } else if self.recall_count == 2 {
-            attempt_record
-                .time
-                .add(Duration::new(6 * DAY_IN_SECONDS, 0))
-        } else {
-            match attempt_record.quality {
-                AttemptQuality::Perfect | AttemptQuality::CorrectAfterHesitation => {
+        self.effort_factor = match attempt_record.quality {
+            AttemptQuality::Perfect
+            | AttemptQuality::CorrectAfterHesitation
+            | AttemptQuality::CorrectSeriousDifficulty => {
+                update_effort_factor(self.effort_factor, attempt_record.quality)
+            }
+            _ => self.effort_factor,
+        };
+        self.next_attempt = match attempt_record.quality {
+            AttemptQuality::Perfect | AttemptQuality::CorrectAfterHesitation => {
+                if self.recall_count == 1 {
+                    println!("recall_count == 1 for {:?}", attempt_record.uuid);
+                    attempt_record.time.add(Duration::new(DAY_IN_SECONDS, 0))
+                } else if self.recall_count == 2 {
+                    attempt_record
+                        .time
+                        .add(Duration::new(6 * DAY_IN_SECONDS, 0))
+                } else {
                     let prior_duration = self
                         .next_attempt
                         .duration_since(
@@ -54,15 +62,20 @@ impl CardState {
                         .time
                         .add(Duration::new(next_duration_in_seconds as u64, 0))
                 }
-                _ => attempt_record.time,
             }
+            _ => attempt_record.time,
         };
+
         self.last_attempt = Some(attempt_record.time);
+    }
+
+    pub fn next_attempt(&self) -> SystemTime {
+        self.next_attempt
     }
 }
 
 fn update_effort_factor(effort_factor: f32, quality: AttemptQuality) -> f32 {
-    let quality_as_float = quality as i8 as f32;
+    let quality_as_float = f32::from(quality as i8);
     let new_effort_factor =
         effort_factor + 0.1 - (5.0 - quality_as_float) * (0.08 + (5.0 - quality_as_float) * 0.02);
 
@@ -105,9 +118,42 @@ mod tests {
             quality: AttemptQuality::IncorrectButEasyRecall,
         });
         assert_eq!(card_state.recall_count, 0);
-        assert_approx_eq!(card_state.effort_factor, 2.18);
+        assert_approx_eq!(card_state.effort_factor, 2.5);
         assert_eq!(card_state.last_attempt, Some(first_attempt_time),);
         assert_eq!(card_state.next_attempt, first_attempt_time,);
+    }
+
+    #[test]
+    fn test_recover_from_failure() {
+        const DAY_IN_SECONDS: u64 = 24 * 60 * 60;
+        let first_attempt_time = SystemTime::now().sub(Duration::new(20, 0));
+        let mut card_state = CardState::new(SystemTime::now().sub(Duration::new(22, 0)));
+        card_state.update(&AttemptRecord {
+            uuid: "flat-banana".to_string(),
+            time: first_attempt_time,
+            quality: AttemptQuality::IncorrectButEasyRecall,
+        });
+        assert_eq!(card_state.recall_count, 0);
+        assert_approx_eq!(card_state.effort_factor, 2.5);
+        assert_eq!(card_state.last_attempt, Some(first_attempt_time),);
+        assert_eq!(card_state.next_attempt, first_attempt_time,);
+        card_state.update(&AttemptRecord {
+            uuid: "flat-banana".to_string(),
+            time: first_attempt_time.add(Duration::new(2, 0)),
+            quality: AttemptQuality::Perfect,
+        });
+        assert_eq!(card_state.recall_count, 1);
+        assert_approx_eq!(card_state.effort_factor, 2.6);
+        assert_eq!(
+            card_state.last_attempt,
+            Some(first_attempt_time.add(Duration::new(2, 0))),
+        );
+        assert_eq!(
+            card_state.next_attempt,
+            first_attempt_time
+                .add(Duration::new(2, 0))
+                .add(Duration::new(DAY_IN_SECONDS, 0)),
+        );
     }
 
     #[test]
@@ -135,7 +181,7 @@ mod tests {
             quality: AttemptQuality::Blackout,
         });
         assert_eq!(card_state.recall_count, 0);
-        assert_approx_eq!(card_state.effort_factor, 1.3);
+        assert_approx_eq!(card_state.effort_factor, 2.6);
         assert_eq!(
             card_state.last_attempt,
             Some(first_attempt_time.add(Duration::new(6, 0))),
@@ -149,8 +195,6 @@ mod tests {
     #[test]
     fn test_require_recall_for_passage() {
         let first_attempt_time = SystemTime::now().sub(Duration::new(20, 0));
-        let day = std::time::Duration::new(24 * 60 * 60, 0);
-
         let mut card_state = CardState::new(SystemTime::now().sub(Duration::new(22, 0)));
         card_state.update(&AttemptRecord {
             uuid: "flat-banana".to_string(),
@@ -163,7 +207,7 @@ mod tests {
             quality: AttemptQuality::Blackout,
         });
         assert_eq!(card_state.recall_count, 0);
-        assert_approx_eq!(card_state.effort_factor, 1.8);
+        assert_approx_eq!(card_state.effort_factor, 2.6);
         assert_eq!(
             card_state.last_attempt,
             Some(first_attempt_time.add(Duration::new(2, 0))),
@@ -178,14 +222,14 @@ mod tests {
             quality: AttemptQuality::CorrectSeriousDifficulty,
         });
         assert_eq!(card_state.recall_count, 1);
-        assert_approx_eq!(card_state.effort_factor, 1.66);
+        assert_approx_eq!(card_state.effort_factor, 2.46);
         assert_eq!(
             card_state.last_attempt,
             Some(first_attempt_time.add(Duration::new(4, 0))),
         );
         assert_eq!(
             card_state.next_attempt,
-            first_attempt_time.add(Duration::new(4, 0)).add(day),
+            first_attempt_time.add(Duration::new(4, 0)),
         );
     }
 

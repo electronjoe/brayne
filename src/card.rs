@@ -1,6 +1,6 @@
 pub type UuidString = String;
 
-#[derive(Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum AttemptQuality {
     Perfect = 5,
     CorrectAfterHesitation = 4,
@@ -10,25 +10,25 @@ pub enum AttemptQuality {
     Blackout = 0,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct AttemptRecord {
     pub uuid: UuidString,
     pub time: std::time::SystemTime,
     pub quality: AttemptQuality,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum CardContents {
     BasicCard(BasicCard),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct BasicCard {
     pub question: String,
     pub answer: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Card {
     pub uuid: UuidString,
     // Timestamp at time of card creation

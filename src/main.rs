@@ -12,15 +12,13 @@ mod card;
 mod ledger;
 mod supermemo;
 
-use ledger::{append_to_ledger, update_from_ledger};
+use ledger::{append_to_ledger, read_ledger};
 
 use clap::{App, Arg, SubCommand};
 use std::collections::HashMap;
 use std::time::SystemTime;
 
 use std::fs::OpenOptions;
-use std::io::prelude::*;
-use std::io::BufReader;
 
 fn main() -> std::io::Result<()> {
     let matches = App::new("Brayne Local")
@@ -86,13 +84,18 @@ fn main() -> std::io::Result<()> {
         };
 
         println!("Card: {:?}", card);
-        append_to_ledger(ledger::LedgerEntry::NewCard(card), "ledger.dat".to_string())?;
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open("ledger.dat".to_string())?;
+        append_to_ledger(ledger::LedgerEntry::NewCard(card), &mut file)?;
     } else if let Some(matches) = matches.subcommand_matches("delete") {
         let uuid = matches.value_of("uuid").unwrap();
-        append_to_ledger(
-            ledger::LedgerEntry::DeleteCard(uuid.to_string()),
-            "ledger.dat".to_string(),
-        )?;
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open("ledger.dat".to_string())?;
+        append_to_ledger(ledger::LedgerEntry::DeleteCard(uuid.to_string()), &mut file)?;
     } else {
         // Data structures for Question/Answering
         let mut cards = HashMap::new();
@@ -101,12 +104,7 @@ fn main() -> std::io::Result<()> {
         // TODO: Sort the attempts by timestamp?
 
         let mut file = OpenOptions::new().read(true).open("ledger.dat")?;
-        for (num, line) in BufReader::new(file).lines().enumerate() {
-            let l = line?;
-            let update: ledger::LedgerEntry = serde_json::from_str(&l)?;
-            println!("LedgerEntry {}: {:?}", num, update);
-            update_from_ledger(update, &mut cards, &mut attempts).unwrap();
-        }
+        read_ledger(&mut file, &mut cards, &mut attempts)?;
 
         loop {
             println!("Cards: {:?}", cards);

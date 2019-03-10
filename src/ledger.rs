@@ -33,18 +33,17 @@ pub fn update_from_ledger(
     match ledger_entry {
         LedgerEntry::NewCard(new_card) => {
             cards.insert(new_card.uuid.clone(), new_card.clone());
-            supermemo_deck.new_card(&new_card.uuid, &new_card.created);
+            supermemo_deck.new_card(new_card.uuid.clone(), new_card.created.clone());
             Ok(())
         }
         LedgerEntry::DeleteCard(uuid) => {
             // TODO throw a warning if uuid doesn't exist?
             cards.remove(&uuid);
-            supermemo_deck
-                .delete_card(&uuid);
+            supermemo_deck.delete_card(&uuid);
             Ok(())
         }
         LedgerEntry::Attempt(attempt) => {
-            supermemo_deck.insert_attempt(&attempt.uuid, &attempt)?;
+            supermemo_deck.insert_attempt(&attempt)?;
             Ok(())
         }
         _ => Ok(()),

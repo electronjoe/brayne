@@ -189,7 +189,7 @@ fn main() -> Result<(), String> {
                 "q" => break,
                 "r" => continue,
                 "c" => {
-                    let uuid = match supermemo_deck.draw_card() {
+                    let uuid = match supermemo_deck.draw_card(SystemTime::now()) {
                         None => {
                             println!("There are no cards in the Deck!");
                             continue;
@@ -200,7 +200,7 @@ fn main() -> Result<(), String> {
                     let ledger_attempt = ledger::LedgerEntry::Attempt(attempt_record.clone());
                     append_to_ledger(&ledger_attempt.clone(), &mut file)
                         .map_err(|err| err.to_string())?;
-                    supermemo_deck.insert_attempt(&uuid, &attempt_record)?;
+                    supermemo_deck.insert_attempt(&attempt_record)?;
                 }
                 _ => (),
             };

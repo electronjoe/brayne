@@ -208,8 +208,6 @@ fn main() -> Result<(), String> {
                         }
                         None => false,
                     };
-                    // let (uuid, next_challenge_time) : (&String, &Reverse<SystemTime>) =
-                    //     schedule.peek().expect("Previously confirmed non-empty");
                     if !card_ready {
                         println!("All card Attempts completed for this session!");
                         continue;

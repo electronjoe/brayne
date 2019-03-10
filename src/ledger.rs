@@ -1,11 +1,8 @@
 use card::{AttemptRecord, Card, UuidString};
-use priority_queue::PriorityQueue;
-use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::time::SystemTime;
-use supermemo::CardState;
+use supermemo::SuperMemoDeck;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum LedgerEntry {
@@ -31,38 +28,23 @@ pub fn append_to_ledger(
 pub fn update_from_ledger(
     ledger_entry: LedgerEntry,
     cards: &mut HashMap<UuidString, Card>,
-    card_states: &mut HashMap<UuidString, CardState>,
-    schedule: &mut PriorityQueue<String, Reverse<SystemTime>>,
+    supermemo_deck: &mut SuperMemoDeck,
 ) -> Result<(), String> {
     match ledger_entry {
         LedgerEntry::NewCard(new_card) => {
             cards.insert(new_card.uuid.clone(), new_card.clone());
-            card_states.insert(new_card.uuid.clone(), CardState::new(new_card.created));
-            schedule.push(
-                new_card.uuid.clone(),
-                Reverse(card_states.get(&new_card.uuid).unwrap().next_attempt()),
-            );
+            supermemo_deck.new_card(&new_card.uuid, &new_card.created);
             Ok(())
         }
         LedgerEntry::DeleteCard(uuid) => {
             // TODO throw a warning if uuid doesn't exist?
             cards.remove(&uuid);
+            supermemo_deck
+                .delete_card(&uuid);
             Ok(())
         }
         LedgerEntry::Attempt(attempt) => {
-            card_states
-                .get_mut(&attempt.uuid)
-                .expect("Missing CardState, no prior NewCard?")
-                .update(&attempt);
-            if None == schedule.change_priority(
-                &attempt.uuid,
-                Reverse(card_states.get(&attempt.uuid).unwrap().next_attempt()),
-            ) {
-                schedule.push(
-                    attempt.uuid.clone(),
-                    Reverse(card_states.get(&attempt.uuid).unwrap().next_attempt()),
-                );
-            }
+            supermemo_deck.insert_attempt(&attempt.uuid, &attempt)?;
             Ok(())
         }
         _ => Ok(()),
@@ -72,14 +54,13 @@ pub fn update_from_ledger(
 pub fn read_ledger(
     file: &std::fs::File,
     cards: &mut HashMap<UuidString, Card>,
-    card_states: &mut HashMap<UuidString, CardState>,
-    schedule: &mut PriorityQueue<String, Reverse<SystemTime>>,
+    supermemo_deck: &mut SuperMemoDeck,
 ) -> Result<(), std::io::Error> {
     for (num, line) in BufReader::new(file).lines().enumerate() {
         let l = line?;
         let update: LedgerEntry = serde_json::from_str(&l)?;
         println!("LedgerEntry {}: {:?}", num, update);
-        update_from_ledger(update, cards, card_states, schedule).unwrap();
+        update_from_ledger(update, cards, supermemo_deck).unwrap();
     }
     Ok(())
 }
@@ -113,10 +94,8 @@ mod tests {
             .expect("Should be able to seek to beginning of file");
 
         let mut cards = HashMap::new();
-        let mut card_states = HashMap::new();
-        let mut schedule = PriorityQueue::new();
-        read_ledger(&file, &mut cards, &mut card_states, &mut schedule)
-            .expect("Should be able to read_ledger");
+        let mut supermemo_deck = SuperMemoDeck::new();
+        read_ledger(&file, &mut cards, &mut supermemo_deck).expect("Should be able to read_ledger");
         assert_eq!(cards.contains_key("banana-farm"), true);
         assert_eq!(*cards.get("banana-farm").unwrap(), new_card);
     }

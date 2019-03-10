@@ -1,9 +1,59 @@
-use card::{AttemptQuality, AttemptRecord};
+use card::{AttemptQuality, AttemptRecord, UuidString};
+use priority_queue::PriorityQueue;
+use std::cmp::Reverse;
+use std::collections::HashMap;
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
 #[derive(Debug)]
-pub struct CardState {
+pub struct SuperMemoDeck {
+    card_states: HashMap<UuidString, CardState>,
+    sorted_deck: PriorityQueue<UuidString, Reverse<SystemTime>>,
+}
+
+impl SuperMemoDeck {
+    pub fn new() -> SuperMemoDeck {
+        SuperMemoDeck {
+            card_states: HashMap::new(),
+            sorted_deck: PriorityQueue::new(),
+        }
+    }
+
+    pub fn new_card(&mut self, uuid: &UuidString, created: &SystemTime) {
+        self.card_states
+            .insert(uuid.clone(), CardState::new(created.clone()));
+    }
+
+    pub fn delete_card(&mut self, uuid: &UuidString) -> bool {
+        self.card_states.remove(uuid).is_some()
+    }
+
+    pub fn insert_attempt(
+        &mut self,
+        uuid: &UuidString,
+        attempt: &AttemptRecord,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    pub fn draw_card(&self) -> Option<UuidString> {
+        //         let card_ready = match schedule.peek() {
+        //     Some((_uuid, Reverse(next_challenge_time))) => {
+        //         *next_challenge_time <= SystemTime::now()
+        //     }
+        //     None => false,
+        // };
+        Some("uuid".to_string())
+    }
+    // For Display
+    // println!("Cards: {:?}", cards);
+    // for (ref item, ref next_challenge_time) in schedule.clone().into_sorted_iter() {
+    //     println!("\t{:?} @ {:?}", item, next_challenge_time);
+    // }
+}
+
+#[derive(Debug)]
+struct CardState {
     // Count of consecutive AttemptRecords scoring >= CorrectSeriousDifficulty
     recall_count: i32,
     // Effort factor up through last AttemptRecord

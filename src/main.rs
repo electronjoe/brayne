@@ -13,12 +13,10 @@ mod card;
 mod ledger;
 mod supermemo;
 
-use ledger::{append_to_ledger, read_ledger, update_from_ledger};
+use ledger::{append_to_ledger, read_ledger};
 
 use card::{Card, CardContents, UuidString};
 use clap::{App, Arg, SubCommand};
-use priority_queue::PriorityQueue;
-use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::time::SystemTime;
 
@@ -63,7 +61,7 @@ fn attempt_card(
         .map_err(|err| err.to_string())?;
     let recall = recall.trim_right();
 
-    let attempt_quality = match recall.as_ref() {
+    let attempt_quality = match recall {
         "5" => card::AttemptQuality::Perfect,
         "4" => card::AttemptQuality::CorrectAfterHesitation,
         "3" => card::AttemptQuality::CorrectSeriousDifficulty,
@@ -164,8 +162,7 @@ fn main() -> Result<(), String> {
     } else {
         // Data structures for Question/Answering
         let mut cards = HashMap::new();
-        let mut card_states = HashMap::new();
-        let mut schedule = PriorityQueue::new();
+        let mut supermemo_deck = supermemo::SuperMemoDeck::new();
 
         let mut file = OpenOptions::new()
             .read(true)
@@ -173,13 +170,7 @@ fn main() -> Result<(), String> {
             .create(true)
             .open("ledger.dat")
             .map_err(|err| err.to_string())?;
-        read_ledger(&file, &mut cards, &mut card_states, &mut schedule)
-            .map_err(|err| err.to_string())?;
-
-        println!("Cards: {:?}", cards);
-        for (ref item, ref next_challenge_time) in schedule.clone().into_sorted_iter() {
-            println!("\t{:?} @ {:?}", item, next_challenge_time);
-        }
+        read_ledger(&file, &mut cards, &mut supermemo_deck).map_err(|err| err.to_string())?;
 
         loop {
             let mut command = "".to_string();
@@ -198,33 +189,18 @@ fn main() -> Result<(), String> {
                 "q" => break,
                 "r" => continue,
                 "c" => {
-                    if schedule.is_empty() {
-                        println!("There are no cards in the Deck!");
-                        continue;
-                    }
-                    let card_ready = match schedule.peek() {
-                        Some((_uuid, Reverse(next_challenge_time))) => {
-                            *next_challenge_time <= SystemTime::now()
+                    let uuid = match supermemo_deck.draw_card() {
+                        None => {
+                            println!("There are no cards in the Deck!");
+                            continue;
                         }
-                        None => false,
+                        Some(uuid) => uuid,
                     };
-                    if !card_ready {
-                        println!("All card Attempts completed for this session!");
-                        continue;
-                    } else {
-                        let (uuid, _next_challenge_time) =
-                            schedule.pop().expect("Must exist, confirmed above");
-                        let ledger_attempt =
-                            ledger::LedgerEntry::Attempt(attempt_card(&uuid, &cards)?);
-                        append_to_ledger(&ledger_attempt.clone(), &mut file)
-                            .map_err(|err| err.to_string())?;
-                        update_from_ledger(
-                            ledger_attempt,
-                            &mut cards,
-                            &mut card_states,
-                            &mut schedule,
-                        )?;
-                    }
+                    let attempt_record = attempt_card(&uuid, &cards)?;
+                    let ledger_attempt = ledger::LedgerEntry::Attempt(attempt_record.clone());
+                    append_to_ledger(&ledger_attempt.clone(), &mut file)
+                        .map_err(|err| err.to_string())?;
+                    supermemo_deck.insert_attempt(&uuid, &attempt_record)?;
                 }
                 _ => (),
             };

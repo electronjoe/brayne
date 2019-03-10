@@ -65,15 +65,7 @@ impl SuperMemoDeck {
                 .get_mut(&attempt.uuid)
                 .expect("should exist")
                 .update(attempt);
-            self.sorted_deck.change_priority(
-                &attempt.uuid,
-                Reverse(
-                    self.card_states
-                        .get(&attempt.uuid)
-                        .expect("should exist")
-                        .next_attempt,
-                ),
-            );
+
             match attempt.quality {
                 AttemptQuality::CorrectSeriousDifficulty
                 | AttemptQuality::IncorrectButEasyRecall
@@ -82,6 +74,15 @@ impl SuperMemoDeck {
                     self.sorted_pop_to_repeat(attempt.uuid.to_string(), attempt.time)?;
                 }
                 _ => {
+                    self.sorted_deck.change_priority(
+                        &attempt.uuid,
+                        Reverse(
+                            self.card_states
+                                .get(&attempt.uuid)
+                                .expect("should exist")
+                                .next_attempt,
+                        ),
+                    );
                     ();
                 }
             }
@@ -138,7 +139,7 @@ impl SuperMemoDeck {
             .repeat_deck
             .front()
             .ok_or("repeat_deck was empty".to_string())
-            .map(|(front_uuid, _)| {
+            .and_then(|(front_uuid, _)| {
                 if *front_uuid == uuid {
                     Ok(true)
                 } else {
@@ -166,11 +167,11 @@ impl SuperMemoDeck {
             .sorted_deck
             .peek()
             .ok_or("sorted_deck was empty".to_string())
-            .map(|(front_uuid, _)| {
+            .and_then(|(front_uuid, _)| {
                 if *front_uuid == uuid {
                     Ok(true)
                 } else {
-                    Err("uuid specified is not at top of sorted_deck")
+                    Err("uuid specified is not at top of sorted_deck".to_string())
                 }
             })?;
         let _popped_ok = self
@@ -574,19 +575,23 @@ mod tests {
         let mut deck = SuperMemoDeck::new();
 
         let test_data = vec![
-            EventAtTime {  // 0
+            EventAtTime {
+                // 0
                 time: now,
                 event: Event::NewCard("banana-uuid".to_string()),
             },
-            EventAtTime {  // 1
+            EventAtTime {
+                // 1
                 time: now.add(day),
                 event: Event::NewCard("coconut-uuid".to_string()),
             },
-            EventAtTime {  // 2
+            EventAtTime {
+                // 2
                 time: now.add(day),
                 event: Event::Draw(Some("banana-uuid".to_string())),
             },
-            EventAtTime {  // 3 - Bad recall moves to repeat_deck
+            EventAtTime {
+                // 3 - Bad recall moves to repeat_deck
                 time: now.add(day),
                 event: Event::Attempt(AttemptRecord {
                     uuid: "banana-uuid".to_string(),
@@ -594,11 +599,13 @@ mod tests {
                     quality: AttemptQuality::IncorrectButEasyRecall,
                 }),
             },
-            EventAtTime {  // 4 - Should pull from sorted_deck over repeat_deck
+            EventAtTime {
+                // 4 - Should pull from sorted_deck over repeat_deck
                 time: now.add(day),
                 event: Event::Draw(Some("coconut-uuid".to_string())),
             },
-            EventAtTime {  // 5 - Perfect recall pushes coconut-uuid to later repeat date (+1d)
+            EventAtTime {
+                // 5 - Perfect recall pushes coconut-uuid to later repeat date (+1d)
                 time: now.add(day),
                 event: Event::Attempt(AttemptRecord {
                     uuid: "coconut-uuid".to_string(),
@@ -606,36 +613,41 @@ mod tests {
                     quality: AttemptQuality::Perfect,
                 }),
             },
-            EventAtTime {  // 6 - Should now pull from repeat_deck
+            EventAtTime {
+                // 6 - Should now pull from repeat_deck
                 time: now.add(day),
                 event: Event::Draw(Some("banana-uuid".to_string())),
             },
-      ];
+        ];
 
         execute_data_driven_test(&mut deck, &test_data);
     }
 
     #[test]
-    fn test_two_cards_successes () {
+    fn test_two_cards_successes() {
         let now = SystemTime::now();
         let day = Duration::new(24 * 60 * 60, 0);
         let hour = Duration::new(60 * 60, 0);
         let mut deck = SuperMemoDeck::new();
 
         let test_data = vec![
-            EventAtTime {  // 0
+            EventAtTime {
+                // 0
                 time: now,
                 event: Event::NewCard("banana-uuid".to_string()),
             },
-            EventAtTime {  // 1
+            EventAtTime {
+                // 1
                 time: now.add(day),
                 event: Event::NewCard("coconut-uuid".to_string()),
             },
-            EventAtTime {  // 2
+            EventAtTime {
+                // 2
                 time: now.add(day),
                 event: Event::Draw(Some("banana-uuid".to_string())),
             },
-            EventAtTime {  // 3 - Good recall pushes banana-uuid to later repeat date (+1d)
+            EventAtTime {
+                // 3 - Good recall pushes banana-uuid to later repeat date (+1d)
                 time: now.add(day),
                 event: Event::Attempt(AttemptRecord {
                     uuid: "banana-uuid".to_string(),
@@ -643,11 +655,13 @@ mod tests {
                     quality: AttemptQuality::CorrectAfterHesitation,
                 }),
             },
-            EventAtTime {  // 4 - Now expect coconut-uuid from sorted_deck
+            EventAtTime {
+                // 4 - Now expect coconut-uuid from sorted_deck
                 time: now.add(day).add(hour),
                 event: Event::Draw(Some("coconut-uuid".to_string())),
             },
-            EventAtTime {  // 5 - Perfect recall pushes coconut-uuid to later repeat date (+1d)
+            EventAtTime {
+                // 5 - Perfect recall pushes coconut-uuid to later repeat date (+1d)
                 time: now.add(day).add(hour),
                 event: Event::Attempt(AttemptRecord {
                     uuid: "coconut-uuid".to_string(),
@@ -655,11 +669,13 @@ mod tests {
                     quality: AttemptQuality::Perfect,
                 }),
             },
-            EventAtTime {  // 6 - A day later, banana-uuid should come up first
+            EventAtTime {
+                // 6 - A day later, banana-uuid should come up first
                 time: now.add(day.mul(2).add(hour)),
                 event: Event::Draw(Some("banana-uuid".to_string())),
             },
-            EventAtTime {  // 7
+            EventAtTime {
+                // 7
                 time: now.add(day.mul(2).add(hour)),
                 event: Event::Attempt(AttemptRecord {
                     uuid: "banana-uuid".to_string(),
@@ -667,11 +683,12 @@ mod tests {
                     quality: AttemptQuality::CorrectAfterHesitation,
                 }),
             },
-            EventAtTime {  // 8 - Followed by coconut-uuid
+            EventAtTime {
+                // 8 - Followed by coconut-uuid
                 time: now.add(day.mul(2).add(hour)),
                 event: Event::Draw(Some("coconut-uuid".to_string())),
             },
-      ];
+        ];
 
         execute_data_driven_test(&mut deck, &test_data);
     }
@@ -680,5 +697,6 @@ mod tests {
     // Test timeout from repeat deck
 
     // Property Checks
-    // Number of daily draw opportunities for attempts strictly better (+1) strictly less or equal
+    // Number of daily draw opportunities for attempts strictly better (+2) strictly less or equal
+    // No cards lost over time
 }
